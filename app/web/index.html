@@ -147,6 +147,7 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 async function api(path, body) {
   const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Lab": "1" }, body: JSON.stringify(body) };
   const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(path + " returned " + r.status);
   return r.json();
 }
 
@@ -235,7 +236,11 @@ function renderLayers() {
   });
 }
 $("#verify").onclick = async () => {
-  const r = await api("/api/verify"); const out = $("#verifyout"); out.replaceChildren();
+  const out = $("#verifyout"); out.replaceChildren(el("p", "note", "Running every attack against your current defenses..."));
+  let r;
+  try { r = await api("/api/verify", {}); }
+  catch (e) { out.replaceChildren(el("p", "no", "Could not run the verification (" + e.message + "). Is the lab still running?")); return; }
+  out.replaceChildren();
   const t = el("table"); const head = el("tr"); ["Attack", "Result"].forEach((x) => head.appendChild(el("th", "", x))); t.appendChild(head);
   r.results.forEach((x) => { const tr = el("tr"); tr.append(el("td", "", x.name), el("td", x.leaked ? "no" : "ok", x.leaked ? "LEAKED a flag" : (x.blocked_by || "no flag leaked"))); t.appendChild(tr); });
   out.appendChild(t);
@@ -256,7 +261,10 @@ async function loadTools() {
 }
 $("#scanbtn").onclick = async () => {
   const out = $("#scanout"); out.replaceChildren(el("p", "note", "Scanning..."));
-  const r = await api("/api/scan", {}); out.replaceChildren();
+  let r;
+  try { r = await api("/api/scan", {}); }
+  catch (e) { out.replaceChildren(el("p", "no", "Could not run the scan (" + e.message + ").")); return; }
+  out.replaceChildren();
   const t = el("table"); r.findings.forEach((f) => { const tr = el("tr"); tr.append(el("td", "sev " + f.severity, f.severity), el("td", "", f.tool + ": " + f.message)); t.appendChild(tr); });
   out.appendChild(t);
   out.appendChild(el("p", "note", "Is every finding real? Which would you triage first?"));
