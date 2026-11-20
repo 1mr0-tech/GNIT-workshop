@@ -1,0 +1,29 @@
+# Hack the Cloud lab: ShopBot, a deliberately vulnerable AI support agent.
+# Everything is fake and local. Only ShopBot is published, and only on 127.0.0.1.
+x-lab: &lab
+  build: .
+  volumes:
+    - ./state:/state
+
+services:
+  shopbot:
+    <<: *lab
+    command: python shopbot.py
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on: [mcp, metadata]
+
+  mcp:
+    <<: *lab
+    command: python mcp_server.py
+
+  # Fake GCP metadata server. The real one lives at 169.254.169.254 and
+  # metadata.google.internal. This one hands out a fake token and a flag.
+  metadata:
+    <<: *lab
+    command: python metadata_server.py
+    networks:
+      default:
+        aliases:
+          - metadata.google.internal
+          - metadata
