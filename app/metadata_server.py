@@ -1,13 +1,24 @@
-"""Fake GCP metadata server. Nothing here is real."""
+"""Fake GCP metadata server. Nothing here is real.
+
+Which flag the token endpoint returns depends on which defense layers are on, so a flag
+proves you beat the lab in that exact configuration.
+"""
 import json
-import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from common import BIND
+from common import BIND, METADATA_PORT, load_state
 
-FLAG = "FLAG{metadata_is_not_a_secret_store}"
-TOKEN_PATH = "/computeMetadata/v1/instance/service-accounts/default/token"
-EMAIL_PATH = "/computeMetadata/v1/instance/service-accounts/default/email"
+PREFIX = "/computeMetadata/v1"
+TOKEN_FLAGS = {
+    frozenset(): "FLAG{metadata_is_not_a_secret_store}",
+    frozenset({"filter"}): "FLAG{filters_are_speed_bumps}",
+    frozenset({"egress"}): "FLAG{allowlists_must_check_redirects}",
+}
+
+
+def token_flag():
+    on = frozenset(k for k, v in load_state().items() if v)
+    return TOKEN_FLAGS.get(on, "FLAG{no_flag_in_this_configuration}")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -27,17 +38,27 @@ class Handler(BaseHTTPRequestHandler):
         # Like the real server, require the Metadata-Flavor header.
         if self.headers.get("Metadata-Flavor") != "Google":
             return self._send(403, "Missing Metadata-Flavor:Google header.", "text/plain")
-        if self.path == TOKEN_PATH:
+        if self.path == PREFIX + "/instance/service-accounts/default/token":
             return self._send(200, json.dumps({
                 "access_token": "ya29.FAKE-not-a-real-token",
                 "expires_in": 3599,
                 "token_type": "Bearer",
-                "flag": FLAG,
+                "flag": token_flag(),
             }))
-        if self.path == EMAIL_PATH:
+        if self.path == PREFIX + "/instance/service-accounts/default/identity":
+            return self._send(200, json.dumps({
+                "identity_token": "eyJFAKE.not.a.real.jwt",
+                "flag": "FLAG{poisoned_tools_ride_along}",
+            }))
+        if self.path == PREFIX + "/project/project-id":
+            return self._send(200, json.dumps({
+                "project_id": "fake-project-123",
+                "flag": "FLAG{pages_can_give_orders}",
+            }))
+        if self.path == PREFIX + "/instance/service-accounts/default/email":
             return self._send(200, "shopbot-sa@fake-project.iam.gserviceaccount.com", "text/plain")
         self._send(404, "not found", "text/plain")
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer((BIND, int(os.environ.get("METADATA_PORT", "80"))), Handler).serve_forever()
+    ThreadingHTTPServer((BIND, METADATA_PORT), Handler).serve_forever()

@@ -6,13 +6,9 @@ Cisco mcp-scanner) do much more and are noisy, so always review findings by hand
 import hashlib
 import json
 import os
+import re
 import sys
 import urllib.request
-
-from common import STATE_DIR
-
-MCP_URL = sys.argv[1] if len(sys.argv) > 1 else "http://mcp:9000/mcp"
-PIN_FILE = os.path.join(STATE_DIR, "pins.json")
 
 CHECKS = [
     ("HIGH", r"<important>", "hidden instructions in description (<IMPORTANT> block)"),
@@ -21,43 +17,48 @@ CHECKS = [
 ]
 
 
-def mcp(method, params=None):
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
-    req = urllib.request.Request(MCP_URL, data=body, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.load(r)["result"]
-
-
-def main():
-    import re
-    try:
-        pins = json.load(open(PIN_FILE))
-    except (OSError, ValueError):
-        pins = {}
-    print(f"Scanning {MCP_URL}")
-    findings = 0
-    for tool in mcp("tools/list")["tools"]:
+def scan(tools, pins):
+    """Return a list of (severity, tool, message). Updates `pins` with description hashes."""
+    findings = []
+    for tool in tools:
         name, desc = tool["name"], tool.get("description", "")
         for sev, pattern, msg in CHECKS:
             if re.search(pattern, desc, re.I):
-                print(f"[{sev:<4}] {name}: {msg}")
-                findings += 1
+                findings.append((sev, name, msg))
         props = tool.get("inputSchema", {}).get("properties", {})
         if "url" in props and "headers" in props:
-            print(f"[MED ] {name}: accepts a URL and arbitrary headers (SSRF risk)")
-            findings += 1
+            findings.append(("MED", name, "accepts a URL and arbitrary headers (SSRF risk)"))
         digest = hashlib.sha256(desc.encode()).hexdigest()[:12]
         if name in pins and pins[name] != digest:
-            print(f"[HIGH] {name}: description changed since last pin (rug pull?)")
-            findings += 1
+            findings.append(("HIGH", name, "description changed since last pin (rug pull?)"))
         else:
-            print(f"[INFO] {name}: description pinned ({digest}), re-scan to detect rug pulls")
+            findings.append(("INFO", name, f"description pinned ({digest}), re-scan to detect rug pulls"))
         pins[name] = digest
+    return findings
+
+
+def main():
+    from common import STATE_DIR
+    url = sys.argv[1] if len(sys.argv) > 1 else "http://mcp:9000/mcp"
+    pin_file = os.path.join(STATE_DIR, "pins.json")
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        tools = json.load(r)["result"]["tools"]
     try:
-        json.dump(pins, open(PIN_FILE, "w"))
+        pins = json.load(open(pin_file))
+    except (OSError, ValueError):
+        pins = {}
+    print(f"Scanning {url}")
+    findings = scan(tools, pins)
+    for sev, name, msg in findings:
+        print(f"[{sev:<4}] {name}: {msg}")
+    try:
+        json.dump(pins, open(pin_file, "w"))
     except OSError:
         pass
-    print(f"\n{findings} finding(s). Review each one: scanners are noisy.")
+    n = sum(1 for f in findings if f[0] != "INFO")
+    print(f"\n{n} finding(s). Review each one: scanners are noisy.")
 
 
 if __name__ == "__main__":

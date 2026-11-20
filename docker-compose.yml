@@ -10,7 +10,7 @@ services:
     <<: *lab
     command: python shopbot.py
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${SHOPBOT_PORT:-8080}:8080"
     depends_on: [mcp, metadata]
 
   mcp:

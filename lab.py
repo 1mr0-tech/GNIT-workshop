@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Run the Hack the Cloud lab without Docker, make or WSL. Needs only Python 3.8+.
+"""Run the Hack the Cloud CTF without Docker, make or WSL. Needs only Python 3.8+.
 
     python lab.py up                 start the lab (three small local servers)
-    python lab.py chat "hello"       talk to ShopBot
-    python lab.py attack             (also: attack-alias, attack-poisoned, attack-indirect)
-    python lab.py scan               scan the tool server
+    python lab.py open               open the CTF in your browser (http://127.0.0.1:8080)
+    python lab.py down               stop the lab
+    python lab.py reset              stop, switch defenses off and clear your score
+
+The CTF itself is played in the browser. These commands are for headless use and debugging:
+
+    python lab.py chat "hello"       talk to ShopBot from the terminal
     python lab.py defend [layers]    layers: filter policy egress (default: all three)
-    python lab.py undefend | status | logs | down | reset
+    python lab.py undefend | status | logs | scan
 
 On macOS and Linux use `python3` instead of `python`.
 Everything listens on 127.0.0.1 only. All credentials in the lab are fake.
@@ -27,7 +31,11 @@ LOGS = os.path.join(STATE, "logs")
 PIDS = os.path.join(STATE, "pids.json")
 DEFENSE = os.path.join(STATE, "defense.json")
 LAYERS = ("filter", "policy", "egress")
-SERVICES = [("metadata", "metadata_server.py", 8081), ("mcp", "mcp_server.py", 9000), ("shopbot", "shopbot.py", 8080)]
+SHOPBOT_PORT = int(os.environ.get("SHOPBOT_PORT", "8080"))
+MCP_PORT = int(os.environ.get("MCP_PORT", "9000"))
+METADATA_PORT = int(os.environ.get("METADATA_PORT", "8081"))
+URL = f"http://127.0.0.1:{SHOPBOT_PORT}"
+SERVICES = [("metadata", "metadata_server.py", METADATA_PORT), ("mcp", "mcp_server.py", MCP_PORT), ("shopbot", "shopbot.py", SHOPBOT_PORT)]
 
 METADATA_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
 ATTACKS = {
@@ -42,7 +50,8 @@ NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 def env():
     e = dict(os.environ)
-    e.update(LAB_LOCAL="1", LAB_STATE=STATE, LAB_BIND="127.0.0.1", METADATA_PORT="8081", PYTHONUNBUFFERED="1")
+    e.update(LAB_LOCAL="1", LAB_STATE=STATE, LAB_BIND="127.0.0.1", PYTHONUNBUFFERED="1",
+             SHOPBOT_PORT=str(SHOPBOT_PORT), MCP_PORT=str(MCP_PORT), METADATA_PORT=str(METADATA_PORT))
     return e
 
 
@@ -63,7 +72,8 @@ def write_defense(**flags):
 
 def cmd_up():
     if any(port_open(p) for _, _, p in SERVICES):
-        sys.exit("Something is already listening on port 8080, 8081 or 9000. Run `python lab.py down` first.")
+        sys.exit(f"Something is already listening on port {SHOPBOT_PORT}, {METADATA_PORT} or {MCP_PORT}. Run `python lab.py down` first,\n"
+                 "or pick other ports, e.g. SHOPBOT_PORT=8090 python lab.py up")
     os.makedirs(LOGS, exist_ok=True)
     if not os.path.exists(DEFENSE):
         write_defense()
@@ -79,7 +89,7 @@ def cmd_up():
         json.dump(pids, f)
     for _ in range(40):
         if all(port_open(p) for _, _, p in SERVICES):
-            print("Lab is up on http://127.0.0.1:8080")
+            print(f"Lab is up. Open {URL} in your browser.")
             return
         time.sleep(0.25)
     print("The lab did not come up. Recent logs:")
@@ -106,7 +116,7 @@ def cmd_down():
 
 def cmd_chat(msg):
     body = json.dumps({"message": msg}).encode()
-    req = urllib.request.Request("http://127.0.0.1:8080/chat", data=body, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(URL + "/chat", data=body, headers={"Content-Type": "application/json"})
     try:
         with NO_PROXY.open(req, timeout=30) as r:
             print(r.read().decode(), end="")
@@ -124,8 +134,11 @@ def cmd_defend(layers):
 
 
 def cmd_status():
-    with open(DEFENSE) as f:
-        d = json.load(f)
+    try:
+        with open(DEFENSE) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        d = {}
     print("defenses: " + " ".join(f"{k}={'on' if d.get(k) else 'off'}" for k in LAYERS))
 
 
@@ -154,15 +167,21 @@ def main(argv):
     elif c == "chat": cmd_chat(" ".join(rest) or "What can you do?")
     elif c in ATTACKS: cmd_chat(ATTACKS[c])
     elif c == "scan": cmd_scan()
+    elif c == "open":
+        import webbrowser
+        webbrowser.open(URL)
+        print("Opening " + URL)
     elif c == "defend": cmd_defend(rest)
     elif c == "undefend": write_defense(); cmd_status()
     elif c == "status": cmd_status()
     elif c == "logs": cmd_logs()
     elif c == "reset":
-        cmd_down(); write_defense()
-        try: os.remove(os.path.join(STATE, "pins.json"))
-        except OSError: pass
-        print("Reset: all defenses off.")
+        cmd_down()
+        for f in ("defense.json", "pins.json", "ctf.json"):
+            try: os.remove(os.path.join(STATE, f))
+            except OSError: pass
+        write_defense()
+        print("Reset: all defenses off and score cleared.")
     else:
         sys.exit(f"Unknown command: {c}. Run `python lab.py help`.")
 
