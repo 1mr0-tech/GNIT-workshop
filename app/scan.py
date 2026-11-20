@@ -5,11 +5,14 @@ Cisco mcp-scanner) do much more and are noisy, so always review findings by hand
 """
 import hashlib
 import json
+import os
 import sys
 import urllib.request
 
+from common import STATE_DIR
+
 MCP_URL = sys.argv[1] if len(sys.argv) > 1 else "http://mcp:9000/mcp"
-PIN_FILE = "/state/pins.json"
+PIN_FILE = os.path.join(STATE_DIR, "pins.json")
 
 CHECKS = [
     ("HIGH", r"<important>", "hidden instructions in description (<IMPORTANT> block)"),

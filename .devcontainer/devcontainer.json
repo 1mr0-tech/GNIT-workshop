@@ -1,0 +1,10 @@
+{
+  "name": "Hack the Cloud lab",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "python3 --version",
+  "customizations": {
+    "vscode": {
+      "settings": { "terminal.integrated.defaultProfile.linux": "bash" }
+    }
+  }
+}

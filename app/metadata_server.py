@@ -1,6 +1,9 @@
 """Fake GCP metadata server. Nothing here is real."""
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from common import BIND
 
 FLAG = "FLAG{metadata_is_not_a_secret_store}"
 TOKEN_PATH = "/computeMetadata/v1/instance/service-accounts/default/token"
@@ -37,4 +40,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 80), Handler).serve_forever()
+    ThreadingHTTPServer((BIND, int(os.environ.get("METADATA_PORT", "80"))), Handler).serve_forever()

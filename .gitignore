@@ -1,1 +1,4 @@
 state/pins.json
+state/pids.json
+state/logs/
+__pycache__/

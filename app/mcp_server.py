@@ -8,7 +8,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-from common import load_state
+from common import BIND, load_state
 
 ALLOWED_HOSTS = {"shopbot"}  # used only when the egress defense is on
 
@@ -102,4 +102,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 9000), Handler).serve_forever()
+    ThreadingHTTPServer((BIND, 9000), Handler).serve_forever()

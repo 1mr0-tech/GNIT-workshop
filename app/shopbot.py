@@ -14,7 +14,7 @@ import re
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from common import load_state
+from common import BIND, load_state
 
 MCP_URL = "http://mcp:9000/mcp"
 
@@ -151,4 +151,4 @@ def urllib_unquote(s):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+    ThreadingHTTPServer((BIND, 8080), Handler).serve_forever()
